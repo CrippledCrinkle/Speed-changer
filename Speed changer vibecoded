@@ -1,559 +1,7 @@
 --=========================================================
---  SIMPLE PRACTICE SCRIPT  |  Roblox LocalScript (Luau)
---  Tabs: Universal | Current | About
---=========================================================
-
---// SERVICES
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
---// CONFIG  (edit these)
-local CONFIG = {
-	DefaultSpeed     = 16,
-	MinSpeed         = 8,
-	MaxSpeed         = 250,
-	OutlineThickness = 4,
-	OwnerName        = "YourNameHere",
-	OwnerNote        = "Thanks for using my practice script!",
-}
-
---// STATE
-local State = {
-	SpeedEnabled = false,
-	Speed        = CONFIG.DefaultSpeed,
-	Hue          = 0.55,
-}
-
---// HELPERS
-local function new(className, props, parent)
-	local inst = Instance.new(className)
-	for prop, value in pairs(props) do
-		inst[prop] = value
-	end
-	if parent then
-		inst.Parent = parent
-	end
-	return inst
-end
-
-local function makeDraggable(frame, handle)
-	handle = handle or frame
-	local dragging, dragStart, startPos = false, nil, nil
-
-	handle.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = frame.Position
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if not dragging then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
-			local delta = input.Position - dragStart
-			frame.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + delta.X,
-				startPos.Y.Scale, startPos.Y.Offset + delta.Y
-			)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-end
-
---// SLIDER CREATOR
-local function createSlider(parent, minVal, maxVal, default, onChange, useGradient)
-	local container = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 22),
-		BackgroundTransparency = 1,
-	}, parent)
-
-	local track = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 8),
-		Position = UDim2.new(0, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundColor3 = Color3.fromRGB(48, 48, 58),
-		BorderSizePixel = 0,
-	}, container)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
-
-	local fill = new("Frame", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(90, 150, 255),
-		BorderSizePixel = 0,
-	}, track)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
-
-	if useGradient then
-		fill.Visible = false
-		local gradient = new("UIGradient", {}, track)
-		gradient.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 60, 60)),
-			ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 220, 60)),
-			ColorSequenceKeypoint.new(0.33, Color3.fromRGB(60, 255, 90)),
-			ColorSequenceKeypoint.new(0.50, Color3.fromRGB(60, 240, 255)),
-			ColorSequenceKeypoint.new(0.67, Color3.fromRGB(70, 110, 255)),
-			ColorSequenceKeypoint.new(0.83, Color3.fromRGB(220, 70, 255)),
-			ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 60, 60)),
-		})
-	end
-
-	local knob = new("Frame", {
-		Size = UDim2.new(0, 14, 0, 14),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0),
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BorderSizePixel = 0,
-		ZIndex = 2,
-	}, track)
-	new("UICorner", { CornerRadius = UDim.new(1, 0) }, knob)
-
-	local dragging = false
-
-	local function setVisual(rel)
-		knob.Position = UDim2.new(rel, 0, 0.5, 0)
-		fill.Size = UDim2.new(rel, 0, 1, 0)
-	end
-
-	local function setFromX(x)
-		if track.AbsoluteSize.X <= 0 then return end
-		local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-		setVisual(rel)
-		onChange(minVal + (maxVal - minVal) * rel)
-	end
-
-	local function setValue(value)
-		local rel = math.clamp((value - minVal) / (maxVal - minVal), 0, 1)
-		setVisual(rel)
-	end
-
-	container.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			setFromX(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if not dragging then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
-			setFromX(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-
-	setValue(default)
-	onChange(default)
-
-	return { Set = setValue }
-end
-
---=========================================================
---  SCREEN GUI + HUD OUTLINE
---=========================================================
-local gui = new("ScreenGui", {
-	Name = "PracticeUI",
-	ResetOnSpawn = false,
-	IgnoreGuiInset = true,
-	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-}, playerGui)
-
-local hud = new("Frame", {
-	Name = "HUDOutline",
-	Size = UDim2.new(1, 0, 1, 0),
-	BackgroundTransparency = 1,
-	ZIndex = 0,
-}, gui)
-
-local hudStroke = new("UIStroke", {
-	Thickness = CONFIG.OutlineThickness,
-	Color = Color3.fromHSV(State.Hue, 1, 1),
-	ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-}, hud)
-
-local function updateHudColor()
-	hudStroke.Color = Color3.fromHSV(State.Hue, 1, 1)
-end
-updateHudColor()
-
---=========================================================
---  MAIN WINDOW
---=========================================================
-local main = new("Frame", {
-	Name = "Main",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 0, 0.5, 0),
-	Size = UDim2.new(0, 420, 0, 320),
-	BackgroundColor3 = Color3.fromRGB(24, 24, 30),
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-	ZIndex = 5,
-}, gui)
-new("UICorner", { CornerRadius = UDim.new(0, 10) }, main)
-new("UIStroke", { Color = Color3.fromRGB(60, 60, 78), Thickness = 1.5 }, main)
-
-local titleBar = new("Frame", {
-	Size = UDim2.new(1, 0, 0, 36),
-	BackgroundColor3 = Color3.fromRGB(33, 33, 42),
-	BorderSizePixel = 0,
-	ZIndex = 6,
-}, main)
-
-new("TextLabel", {
-	Size = UDim2.new(1, -50, 1, 0),
-	Position = UDim2.new(0, 14, 0, 0),
-	BackgroundTransparency = 1,
-	Text = "PRACTICE SCRIPT",
-	TextColor3 = Color3.fromRGB(235, 235, 245),
-	TextSize = 14,
-	Font = Enum.Font.GothamBold,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 7,
-}, titleBar)
-
-local closeBtn = new("TextButton", {
-	Size = UDim2.new(0, 26, 0, 26),
-	Position = UDim2.new(1, -34, 0.5, 0),
-	AnchorPoint = Vector2.new(0, 0.5),
-	BackgroundColor3 = Color3.fromRGB(60, 40, 45),
-	BorderSizePixel = 0,
-	Text = "X",
-	TextColor3 = Color3.fromRGB(255, 180, 180),
-	TextSize = 13,
-	Font = Enum.Font.GothamBold,
-	ZIndex = 7,
-}, titleBar)
-new("UICorner", { CornerRadius = UDim.new(0, 6) }, closeBtn)
-
-makeDraggable(main, titleBar)
-
-local tabBar = new("Frame", {
-	Position = UDim2.new(0, 12, 0, 46),
-	Size = UDim2.new(1, -24, 0, 28),
-	BackgroundTransparency = 1,
-	ZIndex = 6,
-}, main)
-new("UIListLayout", {
-	FillDirection = Enum.FillDirection.Horizontal,
-	Padding = UDim.new(0, 6),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-}, tabBar)
-
-local content = new("Frame", {
-	Position = UDim2.new(0, 12, 0, 84),
-	Size = UDim2.new(1, -24, 1, -96),
-	BackgroundTransparency = 1,
-	ZIndex = 6,
-}, main)
-
-local pages = {}
-local tabButtons = {}
-
-local function createPage(name, order)
-	local page = new("Frame", {
-		Name = name,
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 1,
-		Visible = false,
-		ZIndex = 6,
-	}, content)
-	new("UIListLayout", {
-		Padding = UDim.new(0, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}, page)
-	pages[name] = page
-	return page
-end
-
-local function selectTab(name)
-	for pageName, page in pairs(pages) do
-		page.Visible = (pageName == name)
-	end
-	for tabName, btn in pairs(tabButtons) do
-		local active = (tabName == name)
-		btn.BackgroundColor3 = active and Color3.fromRGB(58, 120, 220) or Color3.fromRGB(38, 38, 47)
-		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(155, 155, 172)
-	end
-end
-
-for i, tabName in ipairs({"Universal", "Current", "About"}) do
-	local btn = new("TextButton", {
-		Size = UDim2.new(1/3, -4, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(38, 38, 47),
-		BorderSizePixel = 0,
-		Text = tabName,
-		TextColor3 = Color3.fromRGB(155, 155, 172),
-		TextSize = 13,
-		Font = Enum.Font.Gotham,
-		LayoutOrder = i,
-		ZIndex = 7,
-	}, tabBar)
-	new("UICorner", { CornerRadius = UDim.new(0, 6) }, btn)
-	tabButtons[tabName] = btn
-	btn.MouseButton1Click:Connect(function()
-		selectTab(tabName)
-	end)
-end
-
---=========================================================
---  REOPEN BUTTON
---=========================================================
-local reopen = new("TextButton", {
-	Size = UDim2.new(0, 36, 0, 36),
-	Position = UDim2.new(0, 12, 0, 12),
-	BackgroundColor3 = Color3.fromRGB(30, 30, 38),
-	BorderSizePixel = 0,
-	Text = "P",
-	TextColor3 = Color3.fromRGB(120, 170, 255),
-	TextSize = 16,
-	Font = Enum.Font.GothamBold,
-	Visible = false,
-	ZIndex = 5,
-}, gui)
-new("UICorner", { CornerRadius = UDim.new(1, 0) }, reopen)
-new("UIStroke", { Color = Color3.fromRGB(70, 70, 90), Thickness = 1.5 }, reopen)
-
-closeBtn.MouseButton1Click:Connect(function()
-	main.Visible = false
-	reopen.Visible = true
-end)
-
-reopen.MouseButton1Click:Connect(function()
-	main.Visible = true
-	reopen.Visible = false
-end)
-
---=========================================================
---  TAB 1 : UNIVERSAL
---=========================================================
-local universalPage = createPage("Universal", 1)
-
-local function sectionLabel(text, parent)
-	return new("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 16),
-		BackgroundTransparency = 1,
-		Text = text,
-		TextColor3 = Color3.fromRGB(120, 170, 255),
-		TextSize = 12,
-		Font = Enum.Font.GothamBold,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 7,
-	}, parent)
-end
-
-sectionLabel("SPEED CHANGER", universalPage)
-
-local speedLabel = new("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 18),
-	BackgroundTransparency = 1,
-	Text = "Speed: " .. CONFIG.DefaultSpeed,
-	TextColor3 = Color3.fromRGB(225, 225, 235),
-	TextSize = 14,
-	Font = Enum.Font.Gotham,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 7,
-}, universalPage)
-
-createSlider(universalPage, CONFIG.MinSpeed, CONFIG.MaxSpeed, CONFIG.DefaultSpeed, function(value)
-	State.Speed = math.floor(value + 0.5)
-	speedLabel.Text = "Speed: " .. State.Speed
-end, false)
-
-local toggleBtn = new("TextButton", {
-	Size = UDim2.new(1, 0, 0, 32),
-	BackgroundColor3 = Color3.fromRGB(48, 48, 58),
-	BorderSizePixel = 0,
-	Text = "Speed: OFF",
-	TextColor3 = Color3.fromRGB(235, 235, 245),
-	TextSize = 14,
-	Font = Enum.Font.GothamBold,
-	ZIndex = 7,
-}, universalPage)
-new("UICorner", { CornerRadius = UDim.new(0, 6) }, toggleBtn)
-
-local function updateToggleVisual()
-	if State.SpeedEnabled then
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(46, 160, 90)
-		toggleBtn.Text = "Speed: ON"
-	else
-		toggleBtn.BackgroundColor3 = Color3.fromRGB(48, 48, 58)
-		toggleBtn.Text = "Speed: OFF"
-	end
-end
-
-toggleBtn.MouseButton1Click:Connect(function()
-	State.SpeedEnabled = not State.SpeedEnabled
-	if not State.SpeedEnabled then
-		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.WalkSpeed = CONFIG.DefaultSpeed
-		end
-	end
-	updateToggleVisual()
-end)
-updateToggleVisual()
-
-new("Frame", {
-	Size = UDim2.new(1, 0, 0, 6),
-	BackgroundTransparency = 1,
-}, universalPage)
-
-sectionLabel("HUD OUTLINE COLOR", universalPage)
-
-local colorPreview = new("Frame", {
-	Size = UDim2.new(1, 0, 0, 22),
-	BackgroundColor3 = Color3.fromHSV(State.Hue, 1, 1),
-	BorderSizePixel = 0,
-	ZIndex = 7,
-}, universalPage)
-new("UICorner", { CornerRadius = UDim.new(0, 6) }, colorPreview)
-new("UIStroke", { Color = Color3.fromRGB(70, 70, 88), Thickness = 1 }, colorPreview)
-
-createSlider(universalPage, 0, 1, State.Hue, function(value)
-	State.Hue = value
-	updateHudColor()
-	colorPreview.BackgroundColor3 = Color3.fromHSV(State.Hue, 1, 1)
-end, true)
-
---=========================================================
---  TAB 2 : CURRENT
---=========================================================
-local currentPage = createPage("Current", 2)
-
-local function infoRow(parent, order, labelText, valueText)
-	local row = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 22),
-		BackgroundTransparency = 1,
-		LayoutOrder = order,
-		ZIndex = 7,
-	}, parent)
-
-	new("TextLabel", {
-		Size = UDim2.new(0.5, 0, 1, 0),
-		BackgroundTransparency = 1,
-		Text = labelText,
-		TextColor3 = Color3.fromRGB(150, 150, 168),
-		TextSize = 13,
-		Font = Enum.Font.Gotham,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 7,
-	}, row)
-
-	local value = new("TextLabel", {
-		Size = UDim2.new(0.5, 0, 1, 0),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		BackgroundTransparency = 1,
-		Text = valueText,
-		TextColor3 = Color3.fromRGB(225, 225, 235),
-		TextSize = 13,
-		Font = Enum.Font.GothamMedium,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		ZIndex = 7,
-	}, row)
-
-	return value
-end
-
-sectionLabel("LIVE INFO", currentPage)
-
-local rowCharacter = infoRow(currentPage, 1, "Character", "—")
-local rowSpeed     = infoRow(currentPage, 2, "WalkSpeed", "—")
-local rowChanger   = infoRow(currentPage, 3, "Speed Changer", "OFF")
-local rowHealth    = infoRow(currentPage, 4, "Health", "—")
-
-sectionLabel("HUD", currentPage)
-
-local rowOutline = infoRow(currentPage, 5, "Outline Color", "—")
-
-task.spawn(function()
-	while true do
-		task.wait(0.2)
-
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-		rowCharacter.Text = char and char.Name or "—"
-		rowSpeed.Text = hum and tostring(math.floor(hum.WalkSpeed)) or "—"
-		rowChanger.Text = State.SpeedEnabled and "ON" or "OFF"
-		rowChanger.TextColor3 = State.SpeedEnabled
-			and Color3.fromRGB(90, 230, 130)
-			or Color3.fromRGB(225, 225, 235)
-		rowHealth.Text = hum and (math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth)) or "—"
-
-		local c = Color3.fromHSV(State.Hue, 1, 1)
-		rowOutline.Text = string.format("%d, %d, %d",
-			math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255))
-		rowOutline.TextColor3 = c
-	end
-end)
-
---=========================================================
---  TAB 3 : ABOUT
---=========================================================
-local aboutPage = createPage("About", 3)
-
-sectionLabel("ABOUT THE OWNER", aboutPage)
-
-new("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 22),
-	BackgroundTransparency = 1,
-	Text = CONFIG.OwnerName,
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 18,
-	Font = Enum.Font.GothamBold,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 7,
-}, aboutPage)
-
-new("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 120),
-	BackgroundTransparency = 1,
-	Text = CONFIG.OwnerNote .. "\n\nThis is a simple practice UI with three tabs.\nUse the Universal tab to change your walk speed with the slider, then flip the toggle to apply it.\n\nThe HUD outline colour can be customised with the gradient slider — it updates live around your screen.",
-	TextColor3 = Color3.fromRGB(185, 185, 200),
-	TextSize = 13,
-	Font = Enum.Font.Gotham,
-	TextWrapped = true,
-	TextYAlignment = Enum.TextYAlignment.Top,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 7,
-}, aboutPage)
-
---=========================================================
---  SPEED APPLICATION LOOP
---=========================================================
-RunService.Heartbeat:Connect(function()
-	if not State.SpeedEnabled then return end
-
-	local char = player.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.WalkSpeed = State.Speed
-	end
-end)
-
-selectTab("Universal")--=========================================================
 --  PRACTICE SCRIPT  |  Roblox LocalScript (Luau)
---  Animated tabs, movable window, Spotify-style toggle
+--  Combined: animated tabs + draggable window + Spotify toggle
+--  Tabs: Universal | Current | About
 --=========================================================
 
 local Players = game:GetService("Players")
@@ -748,11 +196,11 @@ local function updateHudColor()
 end
 updateHudColor()
 
---// MAIN WINDOW
+--// MAIN WINDOW (starts on the right side so it's easy to see)
 local main = new("Frame", {
 	Name = "Main",
 	AnchorPoint = Vector2.new(1, 0.5),
-	Position = UDim2.new(1, -20, 0.5, 0),
+	Position = UDim2.new(1, -100, 0.5, 0),
 	Size = UDim2.new(0, 420, 0, 380),
 	BackgroundColor3 = BG_MAIN,
 	BorderSizePixel = 0,
@@ -764,7 +212,7 @@ new("UICorner", { CornerRadius = UDim.new(0, 12) }, main)
 new("UIStroke", { Color = Color3.fromRGB(45, 45, 55), Thickness = 1.5 }, main)
 local mainScale = new("UIScale", { Scale = 1 }, main)
 
--- Title bar
+-- Title bar (drag handle)
 local titleBar = new("Frame", {
 	Size = UDim2.new(1, 0, 0, 44),
 	BackgroundColor3 = BG_TITLE,
@@ -792,7 +240,7 @@ new("TextLabel", {
 	ZIndex = 7,
 }, titleBar)
 
--- Mini Spotify logo (drawn with frames)
+-- Mini Spotify logo in title bar
 local titleLogo = new("Frame", {
 	Size = UDim2.new(0, 24, 0, 24),
 	Position = UDim2.new(0, 14, 0.5, 0),
@@ -839,7 +287,7 @@ local content = new("Frame", {
 	ZIndex = 6,
 }, main)
 
---// PAGES + TAB LOGIC
+--// PAGES + ANIMATED TAB LOGIC
 local pages = {}
 local tabButtons = {}
 local activeTab = nil
@@ -881,7 +329,7 @@ local function selectTab(name)
 		}):Play()
 	end
 
-	-- Animate old page out (slide left + fade)
+	-- Old page slides left + fades
 	if oldPage then
 		TweenService:Create(oldPage, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 			GroupTransparency = 1,
@@ -894,7 +342,7 @@ local function selectTab(name)
 		end)
 	end
 
-	-- Animate new page in (slide from right + fade)
+	-- New page slides in from right + fades
 	newPage.Visible = true
 	newPage.GroupTransparency = 1
 	newPage.Position = UDim2.new(0.06, 0, 0, 0)
@@ -908,7 +356,6 @@ local function selectTab(name)
 	end)
 end
 
--- Build tab buttons
 for i, tabName in ipairs({"Universal", "Current", "About"}) do
 	local btn = new("TextButton", {
 		Size = UDim2.new(1/3, -4, 1, 0),
@@ -942,11 +389,7 @@ for i, tabName in ipairs({"Universal", "Current", "About"}) do
 	end)
 end
 
---=========================================================
---  TAB 1 : UNIVERSAL
---=========================================================
-local universalPage = createPage("Universal")
-
+--// SECTION LABEL HELPER
 local function sectionLabel(text, parent, order)
 	return new("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 16),
@@ -960,6 +403,11 @@ local function sectionLabel(text, parent, order)
 		ZIndex = 7,
 	}, parent)
 end
+
+--=========================================================
+--  TAB 1 : UNIVERSAL
+--=========================================================
+local universalPage = createPage("Universal")
 
 sectionLabel("SPEED CHANGER", universalPage, 1)
 
@@ -1126,9 +574,9 @@ new("TextLabel", {
 }, aboutPage)
 
 new("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 140),
+	Size = UDim2.new(1, 0, 0, 150),
 	BackgroundTransparency = 1,
-	Text = CONFIG.OwnerNote .. "\n\nThis is a simple practice UI with three animated tabs. Use the Universal tab to change your walk speed with the slider, then flip the toggle to apply it.\n\nThe HUD outline colour can be customised with the gradient slider — it updates live around your screen.",
+	Text = CONFIG.OwnerNote .. "\n\nThis is a simple practice UI with three animated tabs. Use the Universal tab to change your walk speed with the slider, then flip the toggle to apply it.\n\nThe HUD outline colour can be customised with the gradient slider — it updates live around your screen.\n\nDrag the title bar to move the window anywhere on screen.",
 	TextColor3 = Color3.fromRGB(185, 185, 200),
 	TextSize = 13,
 	Font = Enum.Font.Gotham,
@@ -1140,7 +588,7 @@ new("TextLabel", {
 }, aboutPage)
 
 --=========================================================
---  SPOTIFY-STYLE FLOATING TOGGLE BUTTON
+--  SPOTIFY-STYLE FLOATING BUTTON (opens AND closes the menu)
 --=========================================================
 local spotifyBtn = new("TextButton", {
 	Name = "SpotifyToggle",
@@ -1156,7 +604,7 @@ local spotifyBtn = new("TextButton", {
 new("UICorner", { CornerRadius = UDim.new(1, 0) }, spotifyBtn)
 new("UIStroke", { Color = Color3.fromRGB(0, 0, 0), Thickness = 2, Transparency = 0.3 }, spotifyBtn)
 
--- Pulse ring behind button
+-- Pulse ring
 local pulseRing = new("Frame", {
 	Size = UDim2.new(1, 0, 1, 0),
 	Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -1202,11 +650,10 @@ for _, d in ipairs({{w = 24, y = -7, r = -8}, {w = 20, y = 0, r = -8}, {w = 15, 
 	new("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
 end
 
--- Button scale for hover/click pop
 local btnScale = new("UIScale", { Scale = 1 }, spotifyBtn)
 
 --=========================================================
---  WINDOW OPEN / CLOSE
+--  OPEN / CLOSE ANIMATIONS
 --=========================================================
 local windowOpen = false
 
@@ -1214,6 +661,7 @@ local function openWindow()
 	windowOpen = true
 	main.Visible = true
 	mainScale.Scale = 0.85
+	main.Position = UDim2.new(1, -100, 0.5, 0)
 	TweenService:Create(mainScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Scale = 1,
 	}):Play()
@@ -1258,4 +706,4 @@ end)
 --  START
 --=========================================================
 selectTab("Universal")
-openWindow()
+openWindow() 
